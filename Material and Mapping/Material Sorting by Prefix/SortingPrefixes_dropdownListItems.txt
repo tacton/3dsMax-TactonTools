@@ -1,0 +1,12 @@
+UNUSED/
+Materials/
+Materials/Brand/
+Materials/carpet/
+Materials/Fabric/
+Materials/Glass/
+Materials/Leather/
+Materials/Lights/
+Materials/Logos/
+Materials/Metal/
+Materials/Plastic/
+Materials/Universal/
