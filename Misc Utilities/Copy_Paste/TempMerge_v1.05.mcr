@@ -99,7 +99,7 @@ buttonText:"Temp Merge"
 			lblTitle.text = "Tacton Tools"
 			lblTitle.textAlign = lblTitle.textAlign.MiddleCenter
 			lblTitle.font = defFontB "Verdana" 10
-			lblTitle.backColor = defColor 255 140 0
+			lblTitle.backColor = defColor 77 77 240
 			lblTitle.foreColor = defColor 255 255 255
 		)
 
@@ -112,4 +112,48 @@ buttonText:"Temp Merge"
 		try(destroyDialog tactonTmpMergeRollout)catch()
 		createDialog tactonTmpMergeRollout
 	)
+)
+
+
+-------------------------------------------------------------------------------
+-- INSTALL NOTIFICATION
+-- Runs only when this .mcr file is evaluated (dragged into a viewport or run
+-- from the Scripting menu). Only the macroscript block above is persisted to
+-- the usermacros folder, so this notice does NOT re-appear on every 3ds Max
+-- startup -- it shows once, at install time.
+-------------------------------------------------------------------------------
+(
+	rollout tempMergeInstallNotice "Macro Installed"
+	(
+		dotNetControl lblHdr "Label" pos:[4,4] width:312 height:28
+
+		label lbl_done  "The 'Temp Merge' macroscript was installed." align:#center offset:[0,8]
+		label lbl_done2 "If it is not yet on a toolbar, you will need to add it:" align:#center offset:[0,2]
+
+		group "Customize User Interface"
+		(
+			label lbl_step1 "1.   Customize  >  Customize User Interface" align:#left offset:[4,2]
+			label lbl_step2 "2.   Open the 'Toolbars' tab" align:#left offset:[4,2]
+			label lbl_step3 "3.   Set the Category to 'Tacton Tools'" align:#left offset:[4,2]
+			label lbl_step4 "4.   Drag 'Temp Merge' onto any toolbar" align:#left offset:[4,2]
+		)
+
+		button btn_close "Close" width:90 height:24 offset:[0,10]
+
+		fn niceColor r g b = (dotNetClass "System.Drawing.Color").FromArgb r g b
+
+		on tempMergeInstallNotice open do
+		(
+			lblHdr.text = "Temp Merge  v1.05"
+			lblHdr.textAlign = lblHdr.textAlign.MiddleCenter
+			lblHdr.font = dotNetObject "System.Drawing.Font" "Verdana" 10 ((dotNetClass "System.Drawing.FontStyle").bold)
+			lblHdr.backColor = niceColor 77 77 240
+			lblHdr.foreColor = niceColor 255 255 255
+		)
+
+		on btn_close pressed do ( DestroyDialog tempMergeInstallNotice )
+	)
+
+	try ( DestroyDialog tempMergeInstallNotice ) catch ()
+	createDialog tempMergeInstallNotice width:320
 )

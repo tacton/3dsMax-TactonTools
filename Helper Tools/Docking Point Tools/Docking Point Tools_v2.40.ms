@@ -65,6 +65,27 @@ if needed.
 04-12-2025 V2.0 Overhauled the items in a selction. If a group that is closed is selected, it will only make DP for the group, not the objects within the closed group.
 	This prevents the accidental result of many DP being created for all objects within a group.
 20-02-2025 V2.05 Added ability to turn on and off Draw On Top in the Misc Utilites. Works with selection, or a checkbox to do it scene wide, hidden or not.
+01-07-2026 V2.15 Added "Duplicate to Visible Layers" checkbox to Duplicate DP. When checked, it also duplicates the selected Docking Point(s) into every other
+	visible layer, skipping any layer that has no objects directly assigned to it (so parent layers that only hold sub-layers are ignored) and skipping any
+	layer that already contains a Docking Point with that exact name.
+01-07-2026 V2.20 Added "DP Auto Hierarchy" button. For the current layer (or every visible layer, if Duplicate to Visible Layers is checked), it finds the
+	DP_C_ Docking Point(s) directly in that layer, picks the alphabetically-first one as the layer's top parent, and reparents every other unparented
+	top-level node in that layer (objects, group heads, other DP_C_ points, and DP_P_ points) underneath it. Existing hierarchies (groups, manual parenting)
+	are preserved since only unparented nodes are touched, and cross-layer parenting is never created or broken.
+02-07-2026 V2.25 Added "Affect 'NO_' Layers" checkbox logic. The checkbox is only enabled when "Affect all Visible Layers" is checked. When "Affect all Visible
+	Layers" is checked and "Affect 'NO_' Layers" is unchecked, Duplicate DP and DP Auto Hierarchy skip layers whose name starts with "NO_". Checking both
+	includes the NO_ layers again. In current-layer mode (Affect all Visible Layers unchecked) no NO_ filtering is applied.
+02-07-2026 V2.30 Fixed long-standing Create Docking Points bugs: selecting a regular object no longer renames that object to the entered name (only the new
+	Docking Points get the name; a selected Point helper is still renamed since it becomes the Docking Point itself). Entering a name that already has a
+	DP_C_, DP_P_, DP_DIM_, or DP_ prefix no longer doubles the prefix (DP_C_MotorMount now creates DP_C_MotorMount, not DP_C_DP_C_MotorMount); entering
+	DP_P_Name on a Point helper makes it the parent and creates the missing child. Renamed the naming dialog rollout from "Rename and Confirm" to
+	"Name Docking Point".
+09-07-2026 V2.35 Added "Convert Dummy" button to Misc Utilities. FBX reimport turns Point helpers into Dummy objects; this converts Dummies named DP_C_,
+	DP_P_, or DP_DIM_ back into Point helpers by swapping the base object, so name, transform, hierarchy, layer, and wire color are all kept. DP_C_/DP_DIM_
+	get the Child DP Display settings and size, DP_P_ gets the Parent DP Display settings and size. Works on the selection; if the selection has no DP
+	Dummies it offers to convert the whole scene. Group heads are never touched (they are Dummies too, but lack the DP_ prefix).
+09-07-2026 V2.40 Convert Dummy now converts ANY Dummy with a DP_ prefix (DP_SF_, DP_ST_, etc.), not just DP_C_/DP_P_/DP_DIM_. Only DP_C_/DP_DIM_ (child)
+	and DP_P_ (parent) get the display settings from the UI; other DP_ prefixes keep the default Point helper display.
 */
 
 try (DestroyDialog helperRollout) catch()
@@ -81,7 +102,7 @@ global groupNameDialogOpen = false
 global groupNameDefault = ""
 
 
-versionCDP = "Docking Point Tools v2.05"
+versionCDP = "Docking Point Tools v2.40"
 defaultHelperSize = 20
 
 -- Structure to store marker data for drawing in the viewport
@@ -265,8 +286,39 @@ fn getImmediateGroupHead node =
     n  -- may be undefined
 )
 
+-- Alphabetical comparator for qsort, used to pick the top DP_C_ Docking Point in a layer.
+fn compareNodeNames a b =
+(
+    if a.name < b.name then -1
+    else if a.name > b.name then 1
+    else 0
+)
+
+-- Reparents unparented top-level nodes in a layer under its alphabetically-first DP_C_ Docking Point.
+-- Returns true if the layer had a DP_C_ Docking Point and was organized, false if it was skipped.
+fn organizeLayerHierarchy lyr =
+(
+    local prefixChild = "DP_C_"
+    local layerNodes = #()
+    lyr.nodes &layerNodes  -- only nodes directly assigned to this layer
+
+    local dpcNodes = for n in layerNodes where (isKindOf n Point and matchPattern n.name pattern:(prefixChild + "*")) collect n
+    if dpcNodes.count == 0 then
+        false
+    else
+    (
+        qsort dpcNodes compareNodeNames
+        local topParent = dpcNodes[1]
+
+        for n in layerNodes where (n != topParent and n.parent == undefined) do
+            n.parent = topParent
+
+        topParent
+    )
+)
+
 -- Define the nameRollout before btnCreateDP button is used
-rollout nameRollout "Rename and Confirm"
+rollout nameRollout "Name Docking Point"
 (
     editText txtName "Name: " text:""
     button btnOK "OK"
@@ -278,15 +330,21 @@ rollout nameRollout "Rename and Confirm"
 			local newName = txtName.text
 			if newName != "" then
 			(
-				currentObj.name = newName
-				
-				-- Create or modify docking points using the new name
+				-- Create or modify docking points using the entered name
 				local helperSize = helperRolloutRef.spnHelperSize.value
 				local parentSize = helperRolloutRef.spnHelperSize.value * helperRolloutRef.spnParentMult.value
 				local prefixChild = "DP_C_"
 				local prefixParent = "DP_P_"
 				local prefixDIM = "DP_DIM_"
 				local prefixIncomplete = "DP_"
+
+				-- Strip any DP prefix the user typed so it never gets doubled up (DP_C_MotorMount -> MotorMount)
+				local baseName = newName
+				if matchPattern baseName pattern:(prefixChild + "*") then baseName = substring baseName (prefixChild.count + 1) baseName.count
+				else if matchPattern baseName pattern:(prefixParent + "*") then baseName = substring baseName (prefixParent.count + 1) baseName.count
+				else if matchPattern baseName pattern:(prefixDIM + "*") then baseName = substring baseName (prefixDIM.count + 1) baseName.count
+				else if matchPattern baseName pattern:(prefixIncomplete + "*") then baseName = substring baseName (prefixIncomplete.count + 1) baseName.count
+
 				local helperColor
 				local helperParentColor = red
 				local defaultDPColor = color 14 255 2
@@ -337,44 +395,34 @@ rollout nameRollout "Rename and Confirm"
 				
 				if (isKindOf currentObj Point) then
 				(
-					
-					if (matchPattern currentObj.name pattern:(prefixParent + "*")) then
+					-- The selected point itself becomes the Docking Point, so renaming it IS intended here.
+					if (matchPattern newName pattern:(prefixParent + "*")) then
 					(
-						local baseName = substituteString currentObj.name prefixParent ""
+						currentObj.name = prefixParent + baseName
 						local hlprName = prefixChild + baseName
 						createDockingPoint hlprName currentObj.pos currentObj.transform helperSize helperRolloutRef.chkChildCenterMarker.checked helperRolloutRef.chkChildAxisTripod.checked helperRolloutRef.chkChildCross.checked helperRolloutRef.chkChildBox.checked helperRolloutRef.chkChildDrawTop.checked helperColor
 						setDockingPointProperties currentObj parentSize off on off on helperRolloutRef.chkParentDrawTop.checked helperParentColor
 					)
-					
-					else if
+					else if (matchPattern newName pattern:(prefixDIM + "*")) then
 					(
-						matchPattern currentObj.name pattern:(prefixIncomplete + "*") and
-						not matchPattern currentObj.name pattern:(prefixChild + "*") and
-						not matchPattern currentObj.name pattern:(prefixParent + "*") and
-						not matchPattern currentObj.name pattern:(prefixDIM + "*")
-					) then
-						(
-							local baseName = substituteString currentObj.name prefixIncomplete ""
-							currentObj.name = prefixChild + baseName
-							setDockingPointProperties currentObj helperSize helperRolloutRef.chkChildCenterMarker.checked helperRolloutRef.chkChildAxisTripod.checked helperRolloutRef.chkChildCross.checked helperRolloutRef.chkChildBox.checked helperRolloutRef.chkChildDrawTop.checked helperColor
-						)
-					
+						currentObj.name = prefixDIM + baseName
+						setDockingPointProperties currentObj helperSize helperRolloutRef.chkChildCenterMarker.checked helperRolloutRef.chkChildAxisTripod.checked helperRolloutRef.chkChildCross.checked helperRolloutRef.chkChildBox.checked helperRolloutRef.chkChildDrawTop.checked helperColor
+					)
 					else
 					(
-						if not (matchPattern currentObj.name pattern:(prefixChild + "*")) then
-							currentObj.name = prefixChild + currentObj.name
+						currentObj.name = prefixChild + baseName
 						setDockingPointProperties currentObj helperSize helperRolloutRef.chkChildCenterMarker.checked helperRolloutRef.chkChildAxisTripod.checked helperRolloutRef.chkChildCross.checked helperRolloutRef.chkChildBox.checked helperRolloutRef.chkChildDrawTop.checked helperColor
 					)
 				)
 				else
 				(
-					local hlprName = prefixChild + currentObj.name
+					-- Regular object: create the child Docking Point from the entered name, leave the object's own name alone.
+					local hlprName = prefixChild + baseName
 					createDockingPoint hlprName currentObj.pos currentObj.transform helperSize helperRolloutRef.chkChildCenterMarker.checked helperRolloutRef.chkChildAxisTripod.checked helperRolloutRef.chkChildCross.checked helperRolloutRef.chkChildBox.checked helperRolloutRef.chkChildDrawTop.checked helperColor
 				)
-				
+
 				if helperRolloutRef.chkParent.checked and not (matchPattern currentObj.name pattern:(prefixParent + "*")) then
 				(
-					local baseName = substituteString currentObj.name prefixChild ""
 					local hlprParentName = prefixParent + baseName
 					createDockingPoint hlprParentName currentObj.pos currentObj.transform parentSize helperRolloutRef.chkParentCenterMarker.checked helperRolloutRef.chkParentAxisTripod.checked helperRolloutRef.chkParentCross.checked helperRolloutRef.chkParentBox.checked helperRolloutRef.chkParentDrawTop.checked helperParentColor
 				)
@@ -431,7 +479,7 @@ rollout helperRollout versionCDP width:300
         tooltip:"Wire color of selected object assigned to Docking Points. Random will assign the Parent and Child the same random color, and will not affect Modify Docking Points. Default Color is the green we all love in our point helpers."
 		label typeBlank "-------------------------------------------------------------------" enabled:false
 		-- Buttons to create or modify Docking Points
-		checkbox chkParent "Create Parent DP" checked:true align:#right offset:[-33,0]
+		checkbox chkParent "Create Parent DP" checked:true align:#right offset:[-43,0]
 			tooltip:"When checked, a parent Docking Point will be created if it is not the currently selected object with a DP_P_ prefix."
 		button btnCreateDP "Create Docking Points" width:270 height:30
 			tooltip: "Select an object or helper and create Docking Points from the location and orientation."
@@ -672,43 +720,142 @@ rollout helperRollout versionCDP width:300
 -- Duplicate Docking Points
 	group "Duplicate Docking Points"
 	(
+	checkbox chkDupAllVisibleLayers "Affect all Visible Layers" checked:false align:#left offset:[2,0] across:2
+			tooltip:"When checked, Duplicate DP will duplicate the selection into every other visible layer. Layers with no objects directly in them and layers that already have a Docking Point of that exact name, are skipped. Will also make DP Auto Hierarchy organize visible layers."
+	checkbox chkDupNoLayers "Affect 'NO_' Layers" checked:false enabled:false align:#center offset:[2,0]
+			tooltip:"Only available when 'Affect all Visible Layers' is checked. When checked, Duplicate DP and DP Auto Hierarchy will also affect layers with 'NO_' prefix. Otherwise these layers will be ignored."
 	button btnDuplicateDP "Duplicate DP" width:270 height:30
-		tooltip:"This will duplicate the currently selected Docking Point or helper into the currently selected Layer. It will not add sequence number to end of name, and will unlink it from any existing hierarchy."
+		tooltip:"This will duplicate the currently selected Docking Point or helper into the currently selected Layer unless Affect all Visible Layers is checked. It will not add sequence number to end of name, and will unlink it from any existing hierarchy."
+	button btnAutoHierarchy "DP Auto Hierarchy" width:270 height:30 align:#center
+		tooltip:"Attempts to arrange the hierarchy of objects and DPs. Works on active layer unless 'Affect all Visible Layers' in checked."
 	)
+	-- 'Affect NO_ Layers' only applies in all-visible-layers mode, so it is disabled otherwise.
+	on chkDupAllVisibleLayers changed state do
+		chkDupNoLayers.enabled = state
+
+	-- NO_ layers are skipped in all-visible-layers mode unless chkDupNoLayers opts them in.
+	fn skipNoLayer lyr =
+	(
+		(not chkDupNoLayers.checked) and (matchPattern lyr.name pattern:"NO_*")
+	)
+
 	on btnDuplicateDP pressed do undo on
 	(
 		local OGselection = selection as array  -- capture the original selection
 		local newDockingPoints = #()             -- initialize an empty array for new instances
-		
+
 		local prefixChild = "DP_C_"
 		local prefixParent = "DP_P_"
 		local prefixDIM = "DP_DIM_"
-		
-		for obj in OGselection where (isKindOf obj Helper or classof obj == Dummy) and
+
+		local donorObjs = for obj in OGselection where (isKindOf obj Helper or classof obj == Dummy) and
 		(
 		matchPattern obj.name pattern:(prefixChild + "*") or
 		matchPattern obj.name pattern:(prefixParent + "*") or
 		matchPattern obj.name pattern:(prefixDIM + "*")
 		)
-		do
+		collect obj
+
+		if chkDupAllVisibleLayers.checked then
 		(
-			local donorObj = obj
-			local helperColor = donorObj.wireColor
-			local hlprName = donorObj.name  -- you could append a sequence number if needed
-			local hlprInstance = instance donorObj
-			
-			append newDockingPoints hlprInstance  -- add the new instance to our array
-			
-			hlprInstance.name = hlprName
-			hlprInstance.wireColor = helperColor
-			hlprInstance.parent = undefined
-			-- Notice: no "select" call inside the loop!
+			-- Duplicate into every OTHER visible layer that has objects in it and doesn't
+			-- already contain a Docking Point with the exact same name. The currently active
+			-- layer is skipped entirely in this mode.
+			local currentLayerName = layerManager.current.name
+
+			for donorObj in donorObjs do
+			(
+				local dpName = donorObj.name
+				local helperColor = donorObj.wireColor
+
+				for li = 0 to (layerManager.count - 1) do
+				(
+					local lyr = layerManager.getLayer li
+
+					if lyr.name != currentLayerName and not lyr.isHidden and not (skipNoLayer lyr) do
+					(
+						local layerNodes = #()
+						lyr.nodes &layerNodes  -- only nodes directly assigned to this layer, not sub-layers
+
+						if layerNodes.count > 0 do
+						(
+							local alreadyExists = false
+							for n in layerNodes where n.name == dpName do alreadyExists = true
+
+							if not alreadyExists do
+							(
+								local hlprInstance = instance donorObj
+
+								hlprInstance.name = dpName
+								hlprInstance.wireColor = helperColor
+								hlprInstance.parent = undefined
+								lyr.addNode hlprInstance
+
+								append newDockingPoints hlprInstance
+							)
+						)
+					)
+				)
+			)
 		)
-		
+		else
+		(
+			-- Default behavior: duplicate into the currently active layer only.
+			for donorObj in donorObjs do
+			(
+				local helperColor = donorObj.wireColor
+				local hlprName = donorObj.name  -- you could append a sequence number if needed
+				local hlprInstance = instance donorObj
+
+				append newDockingPoints hlprInstance  -- add the new instance to our array
+
+				hlprInstance.name = hlprName
+				hlprInstance.wireColor = helperColor
+				hlprInstance.parent = undefined
+				-- Notice: no "select" call inside the loop!
+			)
+		)
+
 		select newDockingPoints  -- select all the new docking points at once
 		redrawviews()
 	)
-	
+
+	on btnAutoHierarchy pressed do undo on
+	(
+		local layersToProcess = #()
+
+		if chkDupAllVisibleLayers.checked then
+		(
+			for li = 0 to (layerManager.count - 1) do
+			(
+				local lyr = layerManager.getLayer li
+				if not lyr.isHidden and not (skipNoLayer lyr) do append layersToProcess lyr
+			)
+		)
+		else
+		(
+			append layersToProcess layerManager.current
+		)
+
+		local topParents = #()
+		for lyr in layersToProcess do
+		(
+			local result = organizeLayerHierarchy lyr
+			if result != false do append topParents result
+		)
+
+		if topParents.count == 0 then
+		(
+			messageBox "No DP_C_ Docking Point found in the layer(s) to organize." title:"DP Auto Hierarchy"
+		)
+		else
+		(
+			select topParents
+			redrawviews()
+			format "DP Auto Hierarchy organized % layer(s).\n" topParents.count
+		)
+	)
+
 -- Docking Point selection utilities
 	group "Docking Point Selection"
 	(
@@ -1046,6 +1193,8 @@ rollout helperRollout versionCDP width:300
 		checkbox chkAll "Affect ALL Helpers (Draw On Top) in Scene" checked:false align:#center
 			tooltip:"If enabled, applies to every Helper in the scene. If disabled, affects selected Helpers only."
 
+		button btnConvertDummy "Convert Dummy" width:270 height:30 align:#center
+			tooltip:"Converts Dummy objects with a DP_ prefix back into Point helpers (FBX reimport turns Point helpers into Dummies). Name, position, hierarchy, layer, and wire color are kept. DP_C_/DP_DIM_ get the Child DP Display settings, DP_P_ gets the Parent DP Display settings, and other DP_ prefixes (DP_SF_, DP_ST_, etc.) keep the default Point display. Works on selection; if no DP Dummies are selected it can convert the whole scene."
 	)
 	fn getTargetHelpers =
     (
@@ -1073,6 +1222,61 @@ rollout helperRollout versionCDP width:300
     )
     on btnDrawOnTopOn pressed do ( setDrawOnTop true )
     on btnDrawOnTopOff pressed do ( setDrawOnTop false )
+
+	-- Collects Dummy objects with a DP_ prefix (DP_C_, DP_P_, DP_DIM_, DP_SF_, DP_ST_, etc.).
+	-- Group heads are Dummies too, so the name filter is what keeps this from destroying groups.
+	fn getDPDummies sourceObjs =
+	(
+		for o in sourceObjs where
+		(
+			classof o == Dummy and not isGroupHead o and
+			matchPattern o.name pattern:"DP_*"
+		) collect o
+	)
+
+	on btnConvertDummy pressed do undo "Convert Dummy" on
+	(
+		local targetDummies = getDPDummies selection
+
+		if targetDummies.count == 0 do
+		(
+			if queryBox "No DP_ Dummy objects in the selection.\n\nConvert every DP_ Dummy in the scene?" title:"Convert Dummy" then
+				targetDummies = getDPDummies objects
+			else
+				return()
+		)
+
+		if targetDummies.count == 0 then
+		(
+			messageBox "No Dummy objects with a DP_ prefix found." title:"Convert Dummy"
+		)
+		else
+		(
+			local childSize = spnHelperSize.value
+			local parentSize = spnHelperSize.value * spnParentMult.value
+
+			for d in targetDummies do
+			(
+				-- Swap the base object to a Point so the node keeps its name, transform,
+				-- hierarchy, layer, and wire color. A fresh point per Dummy avoids
+				-- accidentally instancing them all together.
+				local pnt = point()
+				d.baseObject = pnt.baseObject
+				delete pnt
+
+				-- Only child/DIM/parent DPs get the display settings from the UI. Other DP_
+				-- prefixes (DP_SF_, DP_ST_, ...) keep the default Point helper display.
+				if matchPattern d.name pattern:"DP_P_*" then
+					setDockingPointProperties d parentSize chkParentCenterMarker.checked chkParentAxisTripod.checked chkParentCross.checked chkParentBox.checked chkParentDrawTop.checked d.wireColor
+				else if (matchPattern d.name pattern:"DP_C_*" or matchPattern d.name pattern:"DP_DIM_*") then
+					setDockingPointProperties d childSize chkChildCenterMarker.checked chkChildAxisTripod.checked chkChildCross.checked chkChildBox.checked chkChildDrawTop.checked d.wireColor
+			)
+
+			select targetDummies
+			redrawviews()
+			format "Converted % Dummy object(s) to Point helpers.\n" targetDummies.count
+		)
+	)
 
 	on btnRemoveSequence pressed do
 	(

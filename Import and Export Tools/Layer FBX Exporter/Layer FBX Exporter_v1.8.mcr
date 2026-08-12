@@ -30,16 +30,17 @@ SOFTWARE.
 09/09/2025: V1.5 Added checkbox to do a gamma correction on export, sRGB Encode Colors (temp). This is for 3ds Max 2024 and newer with the new Color Management Mode which introduced Scene (linear colors) and Display (corrected colors).
 			For example: if working	in Gamma 2.2, when exported it will use the Scene colors at Gamma 1.0, which ends up being too dark in VIZstudio. This will apply 2.2 gamma to the colors of materials without texture maps, are revert
 			the colors back after the export is done.
+01/07/2025: V1.8 Resolved bug where empty parent layers were exported along with visible layers.
 */
 
 macroScript exportLayers
 	category:"Tacton Tools"
 	buttontext:"Exp Layers"
-	tooltip:"Export Layers v1.7"
+	tooltip:"Export Layers v1.8"
 
 (
     try(DestroyDialog layerFBXexporter) catch()
-    versionLE = "Layer FBX Exporter v1.7"
+    versionLE = "Layer FBX Exporter v1.8"
 
     /* ===== sRGB encode helpers (Physical + Standard) ================== */
     global __colBackups = #()
@@ -173,6 +174,7 @@ macroScript exportLayers
 
         on btn_export pressed do
         (
+			clearSelection()
 			--disableSceneRedraw()
             local needRollback = false
 			local exportedLayers = 0

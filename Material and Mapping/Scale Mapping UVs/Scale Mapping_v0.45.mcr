@@ -22,7 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/*  Scale Mapping v0.40
+/*  Scale Mapping v0.45
+
+	Changes from v0.40:
+	- Converted from a .ms script into a .mcr macroscript (category "Tacton Tools",
+	  button "Scale Mapping"). Tool logic is unchanged.
+	- Added install-notification dialog (shown when the .mcr is dragged in / evaluated).
 
 	Changes from v0.30:
 	- Cylindrical UVW Map: no longer computes diameter from bbox.
@@ -33,7 +38,7 @@ SOFTWARE.
 	- Box UVW Map: still sets length, width, and height.
 	- Removed getCylinderDiameter helper (no longer needed).
 
-	Scale Mapping v0.30
+/*  Scale Mapping v0.30
 
 	Changes from v0.20:
 	- Added "Align UVW Map" group with 6 buttons (-X +X -Y +Y -Z +Z)
@@ -68,10 +73,15 @@ SOFTWARE.
 	   - Local bounds computed via snapshotasmesh vertex iteration (works in Max 2026).
 */
 
+macroScript ScaleMapping
+	category:"Tacton Tools"
+	buttontext:"Scale Mapping"
+	tooltip:"Scale Mapping v0.45"
+(
 try(destroyDialog ScaleMappingDialog)catch()
 global ScaleMappingDialog
 
-versionSM = "Scale Mapping v0.40"
+versionSM = "Scale Mapping v0.45"
 
 rollout ScaleMappingDialog versionSM width:300
 (
@@ -83,7 +93,7 @@ rollout ScaleMappingDialog versionSM width:300
 
 	-- Shared scale spinner
 	label lbl_scale "Map Size:" offset:[60,2] across:3
-	spinner cm_spinner "" width:60 range:[0.1,10000,50]
+	spinner cm_spinner "" width:60 range:[0.1,10000,100]
 	label lbl_cm "cm" offset:[-25,2]
 
 	local xOffset = 5
@@ -581,6 +591,7 @@ rollout ScaleMappingDialog versionSM width:300
 	-- -----------------------------
 	on btn_scale pressed do
 	(
+		max modify mode
 		local sel = selection as array
 		if sel.count == 0 then
 		(
@@ -722,3 +733,48 @@ rollout ScaleMappingDialog versionSM width:300
 )
 
 createDialog ScaleMappingDialog
+)
+
+
+-------------------------------------------------------------------------------
+-- INSTALL NOTIFICATION
+-- Runs only when this .mcr file is evaluated (dragged into a viewport or run
+-- from the Scripting menu). Only the macroscript block above is persisted to
+-- the usermacros folder, so this notice does NOT re-appear on every 3ds Max
+-- startup -- it shows once, at install time.
+-------------------------------------------------------------------------------
+(
+	rollout scaleMapInstallNotice "Macro Installed"
+	(
+		dotNetControl lblHdr "Label" pos:[4,4] width:312 height:28
+
+		label lbl_done  "The 'Scale Mapping' macroscript was installed." align:#center offset:[0,8]
+		label lbl_done2 "If it is not yet on a toolbar, you will need to add it:" align:#center offset:[0,2]
+
+		group "Customize User Interface"
+		(
+			label lbl_step1 "1.   Customize  >  Customize User Interface" align:#left offset:[4,2]
+			label lbl_step2 "2.   Open the 'Toolbars' tab" align:#left offset:[4,2]
+			label lbl_step3 "3.   Set the Category to 'Tacton Tools'" align:#left offset:[4,2]
+			label lbl_step4 "4.   Drag 'Scale Mapping' onto any toolbar" align:#left offset:[4,2]
+		)
+
+		button btn_close "Close" width:90 height:24 offset:[0,10]
+
+		fn niceColor r g b = (dotNetClass "System.Drawing.Color").FromArgb r g b
+
+		on scaleMapInstallNotice open do
+		(
+			lblHdr.text = "Scale Mapping  v0.45"
+			lblHdr.textAlign = lblHdr.textAlign.MiddleCenter
+			lblHdr.font = dotNetObject "System.Drawing.Font" "Verdana" 10 ((dotNetClass "System.Drawing.FontStyle").bold)
+			lblHdr.backColor = niceColor 77 77 240
+			lblHdr.foreColor = niceColor 255 255 255
+		)
+
+		on btn_close pressed do ( DestroyDialog scaleMapInstallNotice )
+	)
+
+	try ( DestroyDialog scaleMapInstallNotice ) catch ()
+	createDialog scaleMapInstallNotice width:320
+)

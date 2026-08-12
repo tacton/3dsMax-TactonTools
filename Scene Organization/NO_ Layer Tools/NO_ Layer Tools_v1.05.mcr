@@ -25,6 +25,7 @@ SOFTWARE.
 /*
 NO_ Layer Tools: Script for cleaning up generic object names generally found with CAD imports, or long object names with random characters. Also removes .prt and _MultiBodies suffixes.
 01/10/2025 - v1.0 Release
+12/08/2026 - v1.05 Added install-notification dialog (shown when the .mcr is dragged in / evaluated).
 */
 
 macroscript NoLayers
@@ -34,7 +35,7 @@ macroscript NoLayers
 
 (
 	try (DestroyDialog toggleNOLayers) catch()
-	versionTNL = "Toggle NO_ Layers v1.0"
+	versionTNL = "Toggle NO_ Layers v1.05"
 	dialogWidth = 300
 	buttonWidth = 130
 
@@ -224,4 +225,48 @@ macroscript NoLayers
 	)
 
 	createDialog toggleNOLayers width:dialogWidth height:140
+)
+
+
+-------------------------------------------------------------------------------
+-- INSTALL NOTIFICATION
+-- Runs only when this .mcr file is evaluated (dragged into a viewport or run
+-- from the Scripting menu). Only the macroscript block above is persisted to
+-- the usermacros folder, so this notice does NOT re-appear on every 3ds Max
+-- startup -- it shows once, at install time.
+-------------------------------------------------------------------------------
+(
+	rollout noLayersInstallNotice "Macro Installed"
+	(
+		dotNetControl lblHdr "Label" pos:[4,4] width:312 height:28
+
+		label lbl_done  "The 'NO_ Layer Tools' macroscript was installed." align:#center offset:[0,8]
+		label lbl_done2 "If it is not yet on a toolbar, you will need to add it:" align:#center offset:[0,2]
+
+		group "Customize User Interface"
+		(
+			label lbl_step1 "1.   Customize  >  Customize User Interface" align:#left offset:[4,2]
+			label lbl_step2 "2.   Open the 'Toolbars' tab" align:#left offset:[4,2]
+			label lbl_step3 "3.   Set the Category to 'Tacton Tools'" align:#left offset:[4,2]
+			label lbl_step4 "4.   Drag 'NO_ Layer Tools' onto any toolbar" align:#left offset:[4,2]
+		)
+
+		button btn_close "Close" width:90 height:24 offset:[0,10]
+
+		fn niceColor r g b = (dotNetClass "System.Drawing.Color").FromArgb r g b
+
+		on noLayersInstallNotice open do
+		(
+			lblHdr.text = "NO_ Layer Tools  v1.05"
+			lblHdr.textAlign = lblHdr.textAlign.MiddleCenter
+			lblHdr.font = dotNetObject "System.Drawing.Font" "Verdana" 10 ((dotNetClass "System.Drawing.FontStyle").bold)
+			lblHdr.backColor = niceColor 77 77 240
+			lblHdr.foreColor = niceColor 255 255 255
+		)
+
+		on btn_close pressed do ( DestroyDialog noLayersInstallNotice )
+	)
+
+	try ( DestroyDialog noLayersInstallNotice ) catch ()
+	createDialog noLayersInstallNotice width:320
 )

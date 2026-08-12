@@ -36,7 +36,7 @@ try (destroyDialog ::CleanObjectNames) catch()
 versionCON = "Clean Object Names v1.3"
 
 -- List of default names that should trigger renaming
-global defaultNames = #("MAINBODY", "FILLET", "CHAMFER", "PARTBODY", "SOLID", "NONE", "BREP", "QUILT", "REVOLVE", "BODY", "Extrude", "MANIFOLD", "STITCH_RESULT", "MATERIAL", "CirPattern")
+global defaultNames = #("MAINBODY", "FILLET", "CHAMFER", "PARTBODY", "SOLID", "NONE", "BREP", "QUILT", "REVOLVE", "BODY", "Extrude", "MANIFOLD", "STITCH_RESULT", "MATERIAL", "CirPattern", "Imported", "Boss-Extrude", "Cut-Revolve", "Mirror", "Cut-Extrude")
 
 /*
 Add any undesirable character replacements here.
